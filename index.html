@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>String Circle</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="scene">
+      <div class="title">STRING CIRCLE</div>
+
+      <div class="arena-wrap">
+        <svg id="arena" viewBox="80 80 440 440" aria-label="String circle game arena">
+          <defs>
+            <clipPath id="arena-clip">
+              <circle cx="300" cy="300" r="220"></circle>
+            </clipPath>
+          </defs>
+          <g id="string-lines" clip-path="url(#arena-clip)"></g>
+          <circle class="outer-ring" cx="300" cy="300" r="220"></circle>
+        </svg>
+
+        <div id="fighters" class="fighters" aria-live="polite"></div>
+        <div id="countdown" class="countdown" aria-live="assertive" hidden></div>
+      </div>
+
+      <div class="game-controls">
+        <div class="setup-row" aria-label="Number of fighters">
+          <span class="setup-label">FIGHTERS</span>
+          <div class="count-control">
+            <button id="decreaseCount" class="count-button" type="button" aria-label="Remove one fighter">−</button>
+            <output id="fighterCount" aria-live="polite">10</output>
+            <button id="increaseCount" class="count-button" type="button" aria-label="Add one fighter">+</button>
+          </div>
+          <button id="soundToggle" class="sound-toggle" type="button" aria-pressed="true">Sound: On</button>
+        </div>
+        <label class="speed-control" for="speedSlider">
+          <span class="setup-label">SPEED</span>
+          <input id="speedSlider" type="range" min="50" max="200" step="10" value="100" aria-label="Fight speed" />
+          <output id="speedValue" for="speedSlider">100%</output>
+        </label>
+        <label class="selection-mode-control" for="selectionMode">
+          <span class="setup-label">PLAY AS</span>
+          <select id="selectionMode" aria-label="Choose country flags or leaders">
+            <option value="countries">Country flags</option>
+            <option value="leaders">Presidents &amp; Prime Ministers</option>
+          </select>
+        </label>
+        <div id="countryPickers" class="country-pickers" aria-label="Choose countries"></div>
+        <div id="countryMenu" class="country-menu" role="listbox" aria-label="Select a country" hidden>
+          <input id="countrySearch" class="country-search" type="search" placeholder="Search countries..." autocomplete="off" />
+          <div id="countryOptions" class="country-options"></div>
+        </div>
+        <details id="portraitCredits" class="portrait-credits" hidden>
+          <summary>Portrait credits &amp; sources</summary>
+          <p id="leaderDataSource"></p>
+          <ul id="portraitCreditsList"></ul>
+        </details>
+        <div class="control-actions">
+          <p id="gameStatus" aria-live="polite">Choose countries, then start the fight.</p>
+          <button id="startButton" type="button">Start fight</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="leaders.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
