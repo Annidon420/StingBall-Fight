@@ -174,6 +174,22 @@ body {
   scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
 }
 
+.country-pickers[hidden] {
+  display: none;
+}
+
+.selection-toggle {
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .setup-row {
   display: flex;
   align-items: center;

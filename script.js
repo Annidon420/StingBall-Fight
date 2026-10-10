@@ -86,6 +86,7 @@ const soundToggle = document.getElementById('soundToggle');
 const speedSlider = document.getElementById('speedSlider');
 const speedValue = document.getElementById('speedValue');
 const selectionModeSelect = document.getElementById('selectionMode');
+const toggleCountrySelectionButton = document.getElementById('toggleCountrySelection');
 const portraitCredits = document.getElementById('portraitCredits');
 const portraitCreditsList = document.getElementById('portraitCreditsList');
 const leaderDataSourceElement = document.getElementById('leaderDataSource');
@@ -942,6 +943,14 @@ async function startFight() {
   populateSelectors();
 renderIdleFighters();
 startButton.addEventListener('click', startFight);
+toggleCountrySelectionButton.addEventListener('click', () => {
+  const isExpanded = toggleCountrySelectionButton.getAttribute('aria-expanded') === 'true';
+  pickerContainer.hidden = isExpanded;
+  toggleCountrySelectionButton.setAttribute('aria-expanded', String(!isExpanded));
+  toggleCountrySelectionButton.textContent = isExpanded
+    ? 'Show country selection'
+    : 'Hide country selection';
+});
 decreaseCountButton.addEventListener('click', () => updateFighterCount(-1));
 increaseCountButton.addEventListener('click', () => updateFighterCount(1));
 countrySearch.addEventListener('input', () => renderCountryOptions(countrySearch.value));
