@@ -2,6 +2,8 @@
 const center = { x: 300, y: 300 };
 const arenaRadius = 220;
 const nodeRadius = 19;
+const recordingWidth = 3840;
+const recordingHeight = 2160;
 const teamColors = [
   '#ffae42', '#18d38a', '#ff174e', '#4fa8ff', '#c77dff',
   '#f45da8', '#b5d94c', '#ff7043', '#36d5cf', '#e9d84f'
@@ -9,7 +11,7 @@ const teamColors = [
 let fighterCount = 10;
 const minimumFighters = 2;
 const maximumFighters = 10;
-const stringCount = 36;
+const stringCount = 72;
 const stringTouchRadius = nodeRadius + 2;
 const arenaBounceBoost = 1.08;
 const speedIncreasePerSecond = 2.5;
@@ -106,6 +108,10 @@ const fightersElement = document.getElementById('fighters');
 const linesGroup = document.getElementById('string-lines');
 const statusElement = document.getElementById('gameStatus');
 const startButton = document.getElementById('startButton');
+const videoOffer = document.getElementById('videoOffer');
+const videoOfferMessage = document.getElementById('videoOfferMessage');
+const downloadMatchVideoButton = document.getElementById('downloadMatchVideo');
+const dismissVideoOfferButton = document.getElementById('dismissVideoOffer');
 
 let fighters = [];
 let isPlaying = false;
@@ -116,6 +122,15 @@ let menuPlayerIndex = -1;
 let countdownRun = 0;
 let soundEnabled = true;
 let gameAudioContext = null;
+let recordingAudioDestination = null;
+let recordingCanvas = null;
+let recordingViewWidth = 0;
+let recordingViewHeight = 0;
+let lastVideoFrameAt = -Infinity;
+let matchRecorder = null;
+let finishedMatchVideo = null;
+let matchRecordingError = '';
+let matchRecordPending = false;
 let lastBounceSoundAt = -Infinity;
 let lastCutSoundAt = -Infinity;
 let isCountingDown = false;
@@ -559,29 +574,47 @@ function clearLines() {
 }
 
 function drawFan(fighter) {
-  const group = document.createElementNS(svgNS, 'g');
-  const stroke = teamColors[fighter.index];
-
+  if (!fighter.lineGroup) {
+    fighter.lineGroup = document.createElementNS(svgNS, 'g');
+    fighter.regularPath = document.createElementNS(svgNS, 'path');
+    fighter.edgePath = document.createElementNS(svgNS, 'path');
+    fighter.regularPath.setAttribute('fill', 'none');
+    fighter.regularPath.setAttribute('stroke', teamColors[fighter.index]);
+    fighter.regularPath.setAttribute('stroke-width', '0.35');
+    fighter.regularPath.setAttribute('opacity', '0.78');
+    fighter.regularPath.setAttribute('stroke-linecap', 'round');
+    fighter.regularPath.setAttribute('vector-effect', 'non-scaling-stroke');
+    fighter.edgePath.setAttribute('fill', 'none');
+    fighter.edgePath.setAttribute('stroke', teamColors[fighter.index]);
+    fighter.edgePath.setAttribute('stroke-width', '0.45');
+    fighter.edgePath.setAttribute('opacity', '1');
+    fighter.edgePath.setAttribute('stroke-linecap', 'round');
+    fighter.edgePath.setAttribute('vector-effect', 'non-scaling-stroke');
+    fighter.lineGroup.append(fighter.regularPath, fighter.edgePath);
+    linesGroup.appendChild(fighter.lineGroup);
+  }
+  const regularSegments = [];
+  const edgeSegments = [];
   fighter.lines.forEach((tether) => {
     if (tether.cut) return;
-    const endX = center.x + Math.cos(tether.angle) * arenaRadius;
-    const endY = center.y + Math.sin(tether.angle) * arenaRadius;
-    const line = document.createElementNS(svgNS, 'line');
-    line.setAttribute('x1', fighter.x);
-    line.setAttribute('y1', fighter.y);
-    line.setAttribute('x2', endX);
-    line.setAttribute('y2', endY);
-    line.setAttribute('stroke', stroke);
-    line.setAttribute('stroke-width', tether.edgeAttached ? '0.8' : '0.55');
-    line.setAttribute('opacity', fighter.alive ? (tether.edgeAttached ? '1' : '0.78') : '0.14');
-    group.appendChild(line);
+    if (tether.endX === undefined) {
+      tether.endX = center.x + Math.cos(tether.angle) * arenaRadius;
+      tether.endY = center.y + Math.sin(tether.angle) * arenaRadius;
+    }
+    const segment = `M${fighter.x} ${fighter.y}L${tether.endX} ${tether.endY}`;
+    (tether.edgeAttached ? edgeSegments : regularSegments).push(segment);
   });
-
-  linesGroup.appendChild(group);
+  fighter.regularPath.setAttribute('d', regularSegments.join(''));
+  fighter.edgePath.setAttribute('d', edgeSegments.join(''));
+  if (fighter.renderedAlive !== fighter.alive) {
+    const opacity = fighter.alive ? '1' : '0.14';
+    fighter.regularPath.setAttribute('opacity', fighter.alive ? '0.78' : opacity);
+    fighter.edgePath.setAttribute('opacity', opacity);
+    fighter.renderedAlive = fighter.alive;
+  }
 }
 
-function render() {
-  clearLines();
+function render(timestamp) {
   const size = document.querySelector('.arena-wrap').getBoundingClientRect();
   const scale = size.width / 440;
 
@@ -594,10 +627,237 @@ function render() {
     fighter.element.style.fontSize = `${Math.max(15, nodeRadius * 1.15 * scale)}px`;
     fighter.element.classList.toggle('is-out', !fighter.alive);
   });
+  drawMatchVideoFrame(timestamp);
+}
+
+function drawMatchVideoFrame(timestamp = performance.now()) {
+  if (!recordingCanvas) return;
+  if (timestamp - lastVideoFrameAt < 1000 / 30) return;
+  lastVideoFrameAt = timestamp;
+
+  const context = recordingCanvas.getContext('2d');
+  if (!context) return;
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  const scale = Math.min(recordingWidth / window.innerWidth, recordingHeight / window.innerHeight);
+  const offsetX = (recordingWidth - window.innerWidth * scale) / 2;
+  const offsetY = (recordingHeight - window.innerHeight * scale) / 2;
+  context.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+
+  const title = document.querySelector('.title');
+  if (recordingViewWidth !== window.innerWidth || recordingViewHeight !== window.innerHeight) {
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, recordingWidth, recordingHeight);
+    context.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+    const titleBounds = title.getBoundingClientRect();
+    const titleStyle = window.getComputedStyle(title);
+    context.fillStyle = titleStyle.color;
+    context.font = `${titleStyle.fontWeight} ${titleStyle.fontSize} ${titleStyle.fontFamily}`;
+    context.textAlign = 'center';
+    context.textBaseline = 'top';
+    context.fillText(title.textContent, titleBounds.left + titleBounds.width / 2, titleBounds.top);
+    recordingViewWidth = window.innerWidth;
+    recordingViewHeight = window.innerHeight;
+  }
+
+  const arena = document.querySelector('.arena-wrap').getBoundingClientRect();
+  context.fillStyle = '#000';
+  context.fillRect(arena.left - 2, arena.top - 2, arena.width + 4, arena.height + 4);
+  const arenaScale = arena.width / 440;
+  const arenaX = (x) => arena.left + (x - 80) * arenaScale;
+  const arenaY = (y) => arena.top + (y - 80) * arenaScale;
+  context.beginPath();
+  context.arc(arenaX(center.x), arenaY(center.y), arenaRadius * arenaScale, 0, Math.PI * 2);
+  context.strokeStyle = 'rgba(255, 255, 255, 0.93)';
+  context.lineWidth = 2;
+  context.stroke();
+
+  fighters.forEach((fighter) => {
+    const regularLines = [];
+    const edgeLines = [];
+    fighter.lines.forEach((tether) => {
+      if (tether.cut) return;
+      (tether.edgeAttached ? edgeLines : regularLines).push(tether);
+    });
+
+    context.strokeStyle = teamColors[fighter.index];
+    context.globalAlpha = fighter.alive ? 0.78 : 0.14;
+    context.lineWidth = 0.35;
+    context.beginPath();
+    regularLines.forEach((tether) => {
+      context.moveTo(arenaX(fighter.x), arenaY(fighter.y));
+      context.lineTo(arenaX(tether.endX), arenaY(tether.endY));
+    });
+    context.stroke();
+
+    context.globalAlpha = fighter.alive ? 1 : 0.14;
+    context.lineWidth = 0.45;
+    context.beginPath();
+    edgeLines.forEach((tether) => {
+      context.moveTo(arenaX(fighter.x), arenaY(fighter.y));
+      context.lineTo(arenaX(tether.endX), arenaY(tether.endY));
+    });
+    context.stroke();
+
+    const fighterSize = Math.max(26, nodeRadius * 2 * arenaScale);
+    const radius = fighterSize / 2;
+    const x = arenaX(fighter.x);
+    const y = arenaY(fighter.y);
+    context.globalAlpha = fighter.alive ? 1 : 0.22;
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fillStyle = '#000';
+    context.fill();
+    context.strokeStyle = teamColors[fighter.index];
+    context.lineWidth = 2;
+    context.stroke();
+    const image = fighter.element.querySelector('img');
+    if (image && image.complete && image.naturalWidth > 0) {
+      context.save();
+      context.beginPath();
+      context.arc(x, y, Math.max(0, radius - 2), 0, Math.PI * 2);
+      context.clip();
+      context.drawImage(image, x - radius + 2, y - radius + 2, (radius - 2) * 2, (radius - 2) * 2);
+      context.restore();
+    }
+  });
+  context.globalAlpha = 1;
+
+  if (!countdownElement.hidden) {
+    const bounds = countdownElement.getBoundingClientRect();
+    const style = window.getComputedStyle(countdownElement);
+    context.fillStyle = style.color;
+    context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(countdownElement.textContent, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+  }
+
+  const statusBounds = statusElement.getBoundingClientRect();
+  const statusStyle = window.getComputedStyle(statusElement);
+  context.fillStyle = '#000';
+  context.fillRect(statusBounds.left - 2, statusBounds.top - 2, statusBounds.width + 4, statusBounds.height + 4);
+  context.fillStyle = statusStyle.color;
+  context.font = `${statusStyle.fontWeight} ${statusStyle.fontSize} ${statusStyle.fontFamily}`;
+  context.textAlign = 'center';
+  context.textBaseline = 'bottom';
+  context.fillText(statusElement.textContent, window.innerWidth / 2, statusBounds.bottom);
+}
+
+function showMatchVideoOffer(message, hasVideo) {
+  videoOfferMessage.textContent = message;
+  downloadMatchVideoButton.hidden = !hasVideo;
+  dismissVideoOfferButton.hidden = false;
+  dismissVideoOfferButton.textContent = hasVideo ? 'No thanks' : 'Close';
+  videoOffer.hidden = false;
+  matchRecordPending = false;
+  startButton.disabled = false;
+}
+
+function startMatchRecording() {
+  matchRecordingError = '';
+  if (
+    !window.MediaRecorder ||
+    !HTMLCanvasElement.prototype.captureStream ||
+    !window.AudioContext
+  ) {
+    matchRecordingError = 'Match video recording with sound is not supported by this browser.';
+    return;
+  }
+
+  recordingCanvas = document.createElement('canvas');
+  recordingCanvas.width = recordingWidth;
+  recordingCanvas.height = recordingHeight;
+  recordingViewWidth = 0;
+  recordingViewHeight = 0;
+  lastVideoFrameAt = -Infinity;
+  const canvas = recordingCanvas;
+  let audioDestination = null;
+  drawMatchVideoFrame();
+  let stream;
+  try {
+    const audioContext = getAudioContext();
+    if (!audioContext) {
+      throw new Error('Web Audio is unavailable.');
+    }
+    audioDestination = audioContext.createMediaStreamDestination();
+    recordingAudioDestination = audioDestination;
+    stream = canvas.captureStream(30);
+    audioDestination.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
+    const mimeType = [
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9,opus',
+      'video/webm'
+    ].find((type) => window.MediaRecorder.isTypeSupported(type));
+    const recorder = mimeType
+      ? new window.MediaRecorder(stream, { mimeType, videoBitsPerSecond: 16000000 })
+      : new window.MediaRecorder(stream);
+    const videoChunks = [];
+    matchRecorder = recorder;
+    recorder.addEventListener('dataavailable', (event) => {
+      if (event.data.size > 0) videoChunks.push(event.data);
+    });
+    recorder.addEventListener('error', (event) => {
+      if (matchRecorder !== recorder) return;
+      console.error('Match video recording failed:', event.error);
+      matchRecordingError = 'The match video could not be recorded in this browser.';
+      if (recorder.state !== 'inactive') recorder.stop();
+    });
+    recorder.addEventListener('stop', () => {
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      if (recordingAudioDestination === audioDestination) recordingAudioDestination = null;
+      if (matchRecorder !== recorder) return;
+      recordingCanvas = null;
+      recordingViewWidth = 0;
+      recordingViewHeight = 0;
+      matchRecorder = null;
+      if (matchRecordingError) {
+        showMatchVideoOffer(matchRecordingError, false);
+        return;
+      }
+      finishedMatchVideo = new Blob(videoChunks, { type: recorder.mimeType || 'video/webm' });
+      if (finishedMatchVideo.size === 0) {
+        showMatchVideoOffer('The match video could not be recorded.', false);
+        return;
+      }
+      showMatchVideoOffer('Would you like to download a video of this match?', true);
+    });
+    recorder.start(1000);
+  } catch (error) {
+    console.error('Could not start match video recording:', error);
+    matchRecordingError = 'The match video could not be recorded in this browser.';
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+    if (audioDestination) {
+      audioDestination.stream.getTracks().forEach((track) => track.stop());
+      if (recordingAudioDestination === audioDestination) {
+        recordingAudioDestination = null;
+      }
+    }
+    recordingCanvas = null;
+    recordingViewWidth = 0;
+    recordingViewHeight = 0;
+  }
+}
+
+function stopMatchRecording() {
+  if (matchRecorder && matchRecorder.state !== 'inactive') {
+    matchRecordPending = true;
+    videoOfferMessage.textContent = 'Preparing your match video...';
+    videoOffer.hidden = false;
+    downloadMatchVideoButton.hidden = true;
+    dismissVideoOfferButton.hidden = true;
+    startButton.disabled = true;
+    matchRecorder.stop();
+    return;
+  }
+
+  if (matchRecordingError) {
+    showMatchVideoOffer(matchRecordingError, false);
+  }
 }
 
 function getAudioContext() {
-  if (!soundEnabled || !window.AudioContext) return null;
+  if (!window.AudioContext) return null;
   if (!gameAudioContext) gameAudioContext = new window.AudioContext();
   if (gameAudioContext.state === 'suspended') {
     gameAudioContext
@@ -608,6 +868,7 @@ function getAudioContext() {
 }
 
 function playTone(frequency, duration = 0.12, waveform = 'sine', volume = 0.045) {
+  if (!soundEnabled) return;
   const context = getAudioContext();
   if (!context) return;
 
@@ -620,6 +881,7 @@ function playTone(frequency, duration = 0.12, waveform = 'sine', volume = 0.045)
   gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
   oscillator.connect(gain);
   gain.connect(context.destination);
+  if (recordingAudioDestination) gain.connect(recordingAudioDestination);
   oscillator.start(now);
   oscillator.stop(now + duration);
 }
@@ -708,6 +970,11 @@ function pointToSegmentDistance(pointX, pointY, startX, startY, endX, endY) {
   const segmentX = endX - startX;
   const segmentY = endY - startY;
   const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+  if (segmentLengthSquared === 0) {
+    const offsetX = pointX - startX;
+    const offsetY = pointY - startY;
+    return offsetX * offsetX + offsetY * offsetY;
+  }
   const projection = Math.max(
     0,
     Math.min(
@@ -718,7 +985,9 @@ function pointToSegmentDistance(pointX, pointY, startX, startY, endX, endY) {
   );
   const nearestX = startX + projection * segmentX;
   const nearestY = startY + projection * segmentY;
-  return Math.hypot(pointX - nearestX, pointY - nearestY);
+  const offsetX = pointX - nearestX;
+  const offsetY = pointY - nearestY;
+  return offsetX * offsetX + offsetY * offsetY;
 }
 
 function segmentToSegmentDistance(ax, ay, bx, by, cx, cy, dx, dy) {
@@ -762,8 +1031,10 @@ function cutOpponentLines() {
       if (!target.alive || target === attacker) return;
       target.lines.forEach((tether) => {
         if (tether.cut) return;
-        const endX = center.x + Math.cos(tether.angle) * arenaRadius;
-        const endY = center.y + Math.sin(tether.angle) * arenaRadius;
+        if (tether.endX === undefined) {
+          tether.endX = center.x + Math.cos(tether.angle) * arenaRadius;
+          tether.endY = center.y + Math.sin(tether.angle) * arenaRadius;
+        }
         const distance = segmentToSegmentDistance(
           attacker.previousX,
           attacker.previousY,
@@ -771,10 +1042,10 @@ function cutOpponentLines() {
           attacker.y,
           target.x,
           target.y,
-          endX,
-          endY
+          tether.endX,
+          tether.endY
         );
-        if (distance <= stringTouchRadius) {
+        if (distance <= stringTouchRadius * stringTouchRadius) {
           tether.cut = true;
           cutCount += 1;
         }
@@ -817,6 +1088,7 @@ function updateStatus() {
       : 'It is a draw!';
     startButton.textContent = 'Fight again';
     updateCountControls();
+    stopMatchRecording();
     return true;
   }
 
@@ -853,16 +1125,17 @@ function frame(timestamp) {
     bounceFighters();
     cutOpponentLines();
     if (updateStatus()) {
-      render();
+      render(timestamp);
       return;
     }
   }
 
-  render();
+  render(timestamp);
   animationFrame = window.requestAnimationFrame(frame);
 }
 
 function renderIdleFighters() {
+  clearLines();
   fightersElement.replaceChildren();
   countdownElement.hidden = true;
   fighters = getSelectedChoices().map((choice, index) => createFighter(choice, index));
@@ -885,9 +1158,20 @@ function renderIdleFighters() {
 }
 
 async function startFight() {
+  if (matchRecordPending) return;
+  if (matchRecorder && matchRecorder.state !== 'inactive') {
+    const unfinishedRecorder = matchRecorder;
+    matchRecorder = null;
+    recordingCanvas = null;
+    recordingAudioDestination = null;
+    unfinishedRecorder.stop();
+  }
   window.cancelAnimationFrame(animationFrame);
   closeCountryMenu();
   const run = ++countdownRun;
+  videoOffer.hidden = true;
+  finishedMatchVideo = null;
+  clearLines();
   fightersElement.replaceChildren();
   fighters = getSelectedChoices().map((choice, index) => createFighter(choice, index));
   fighters.forEach((fighter) => {
@@ -907,6 +1191,7 @@ async function startFight() {
   startButton.textContent = 'Get ready';
   updateCountControls();
   render();
+  startMatchRecording();
 
   for (let number = 3; number > 0; number -= 1) {
     if (run !== countdownRun) return;
@@ -943,6 +1228,26 @@ async function startFight() {
   populateSelectors();
 renderIdleFighters();
 startButton.addEventListener('click', startFight);
+downloadMatchVideoButton.addEventListener('click', () => {
+  if (!finishedMatchVideo) return;
+  const videoUrl = URL.createObjectURL(finishedMatchVideo);
+  const link = document.createElement('a');
+  link.href = videoUrl;
+  link.download = `string-circle-match-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(videoUrl), 60000);
+  finishedMatchVideo = null;
+  videoOffer.hidden = true;
+  startButton.disabled = false;
+});
+dismissVideoOfferButton.addEventListener('click', () => {
+  finishedMatchVideo = null;
+  videoOffer.hidden = true;
+  matchRecordPending = false;
+  startButton.disabled = false;
+});
 toggleCountrySelectionButton.addEventListener('click', () => {
   const isExpanded = toggleCountrySelectionButton.getAttribute('aria-expanded') === 'true';
   pickerContainer.hidden = isExpanded;
