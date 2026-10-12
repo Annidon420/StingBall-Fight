@@ -11,14 +11,14 @@
       <div class="title">STRING CIRCLE</div>
 
       <div class="arena-wrap">
-        <svg id="arena" viewBox="80 80 440 440" aria-label="String circle game arena">
+        <svg id="arena" viewBox="80 80 440 440" aria-label="Game arena" shape-rendering="geometricPrecision">
           <defs>
             <clipPath id="arena-clip">
-              <circle cx="300" cy="300" r="220"></circle>
+              <path id="arena-clip-shape"></path>
             </clipPath>
           </defs>
           <g id="string-lines" clip-path="url(#arena-clip)"></g>
-          <circle class="outer-ring" cx="300" cy="300" r="220"></circle>
+          <path id="arena-outline" class="outer-ring"></path>
         </svg>
 
         <div id="fighters" class="fighters" aria-live="polite"></div>
@@ -47,6 +47,16 @@
             <option value="leaders">Presidents &amp; Prime Ministers</option>
           </select>
         </label>
+        <label class="selection-mode-control" for="arenaShape">
+          <span class="setup-label">ARENA</span>
+          <select id="arenaShape" aria-label="Choose arena shape">
+            <option value="circle">Circle</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="pentagon">Pentagon</option>
+            <option value="hexagon">Hexagon</option>
+          </select>
+        </label>
         <button id="toggleCountrySelection" class="selection-toggle" type="button" aria-expanded="true" aria-controls="countryPickers">Hide country selection</button>
         <div id="countryPickers" class="country-pickers" aria-label="Choose countries"></div>
         <div id="countryMenu" class="country-menu" role="listbox" aria-label="Select a country" hidden>
@@ -62,13 +72,6 @@
           <p id="gameStatus" aria-live="polite">Choose countries, then start the fight.</p>
           <button id="startButton" type="button">Start fight</button>
         </div>
-        <section id="videoOffer" class="video-offer" aria-live="polite" hidden>
-          <p id="videoOfferMessage"></p>
-          <div class="video-offer-actions">
-            <button id="downloadMatchVideo" type="button">Download match video</button>
-            <button id="dismissVideoOffer" type="button">No thanks</button>
-          </div>
-        </section>
       </div>
     </div>
 

@@ -63,7 +63,7 @@ body {
 .outer-ring {
   fill: transparent;
   stroke: rgba(255, 255, 255, 0.93);
-  stroke-width: 2;
+  stroke-width: 2.5;
   vector-effect: non-scaling-stroke;
 }
 
@@ -118,9 +118,9 @@ body {
   background: rgba(0, 0, 0, 0.9);
   font-size: 23px;
   line-height: 1;
-  box-shadow: 0 0 7px currentColor, 0 0 18px currentColor;
+  box-shadow: 0 0 0 1px #fff, 0 0 8px currentColor, 0 0 18px currentColor;
   transform: translate(-50%, -50%);
-  will-change: left, top;
+  will-change: transform;
 }
 
 .fighter .flag-art {
@@ -130,6 +130,7 @@ body {
   border: 0;
   border-radius: 50%;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.95);
 }
 
 .fighter.is-hit {
@@ -144,7 +145,8 @@ body {
 
 @keyframes hitFlash {
   50% {
-    transform: translate(-50%, -50%) scale(1.35);
+    filter: brightness(1.8);
+    box-shadow: 0 0 0 3px #fff, 0 0 14px currentColor, 0 0 26px currentColor;
   }
 }
 
@@ -221,7 +223,8 @@ body {
   margin-bottom: 9px;
 }
 
-#selectionMode {
+#selectionMode,
+#arenaShape {
   width: 100%;
   height: 32px;
   padding: 0 8px;
@@ -564,42 +567,6 @@ body {
 #startButton:disabled {
   cursor: wait;
   filter: grayscale(0.5);
-}
-
-.video-offer {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 9px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.video-offer[hidden] {
-  display: none;
-}
-
-.video-offer p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 12px;
-}
-
-.video-offer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.video-offer-actions button {
-  min-height: 32px;
-  padding: 0 11px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 8px;
-  background: #111820;
-  color: #fff;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
 }
 
 @media (max-height: 620px) {
